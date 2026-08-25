@@ -23,7 +23,7 @@ az webapp up --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP
 
 ## 2. Sätt upp VNet med subnät
 
-### 1. Börja med frontend
+### 1. Skapa Vnet med subnät
 
 ```bash
 az network vnet create \
@@ -36,7 +36,7 @@ az network vnet subnet create \
     --vnet-name $VNET_NAME --address-prefix 10.0.2.0/24
 ```
 
-### 2. Sätt upp regler
+### 2. Sätt upp NSG för frontend
 
 ```bash
 az network nsg create --name nsg-frontend --resource-group $RESOURCE_GROUP
@@ -68,7 +68,7 @@ az network vnet subnet update \
     --vnet-name $VNET_NAME --network-security-group nsg-frontend
 ```
 
-### 3. Skapa subnät för backend och sätt upp regler
+### 3. Sätt upp NSG för backend
 
 ```bash
 az network nsg create --name nsg-backend --resource-group $RESOURCE_GROUP
@@ -84,4 +84,37 @@ az network nsg rule create \
 az network vnet subnet update \
     --name backend-subnet --resource-group $RESOURCE_GROUP \
     --vnet-name $VNET_NAME --network-security-group nsg-backend
+```
+
+### 4. Sätt Webbappen till HTTPS-Only
+
+```bash
+# HTTPS-Only blockar port 80 mot appen på riktigt
+az webapp update --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP --https-only true
+```
+
+### 5. Koppla App Service till frontend subnet
+
+#### 1. Sätt upp Frontend i Azure
+
+#### 2. Integrera VNet med frontend
+
+```bash
+az webapp vnet-integration add \
+  --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP \
+  --vnet $VNET_NAME --subnet frontend-subnet
+```
+
+### 6. Koppla Storage Account till backend subnet
+
+#### 1. Skapa Storage Account
+
+#### 2. Koppla Storage Account mot en private endpoint.
+
+```bash
+az network private-endpoint create \
+  --name pe-storage --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME --subnet backend-subnet \
+  --private-connection-resource-id <storage-account-resource-id> \
+  --group-id blob --connection-name pe-storage-connection
 ```
