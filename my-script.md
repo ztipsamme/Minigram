@@ -1,24 +1,24 @@
 ## 1. Skapa Infrastruktur
 
 ```bash
-    RESOURCE_GROUP=""
-    APP_PLAN_NAME="plan-minigram"
-    WEB_APP_NAME="minigram-api-maritiman"
-    VNET_NAME="vnet-minigram"
+RESOURCE_GROUP="RG-Oskar-Kotlinski-fbed43-DotNetCloudDeveloper-VT-Mars-Goteborg"
+APP_PLAN_NAME="minigram-maritiman"
+WEB_APP_NAME="minigram-api-maritiman"
+VNET_NAME="minigram-vnet"
 
-    # App Service plan (Linux, billigaste tier räcker: B1 eller F1 om tillgängligt)
-    az appservice plan create \
-        --name plan-minigram \
-        --resource-group $RESOURCE_GROUP \
-        --sku B1 \
-        --is-linux
+# App Service plan (Linux, billigaste tier räcker: B1 eller F1 om tillgängligt)
+az appservice plan create \
+    --name plan-minigram \
+    --resource-group $RESOURCE_GROUP \
+    --sku B1 \
+    --is-linux
 
-    # Web App
-    az webapp create --name mingram-api-<dittnamn> --resource-group $RESOURCE_GROUP \
-    --plan $APP_PLAN_NAME --runtime "DOTNETCORE:8.0"
+# Web App
+az webapp create --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP \
+--plan $APP_PLAN_NAME --runtime "DOTNETCORE:10.0"
 
-    # Deploy från lokal build (kör i mappen med .csproj)
-    az webapp up --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP
+# Deploy från lokal build (kör i mappen med .csproj)
+az webapp up --name $WEB_APP_NAME --resource-group $RESOURCE_GROUP
 ```
 
 ## 2. Sätt upp VNet med subnät
@@ -34,13 +34,13 @@ az network vnet create \
 az network vnet subnet create \
     --name backend-subnet --resource-group $RESOURCE_GROUP \
     --vnet-name $VNET_NAME --address-prefix 10.0.2.0/24
-
-az network nsg create --name nsg-frontend --resource-group $RESOURCE_GROUP
 ```
 
 ### 2. Sätt upp regler
 
 ```bash
+az network nsg create --name nsg-frontend --resource-group $RESOURCE_GROUP
+
 # Tillåt HTTPS in från internet
 az network nsg rule create \
     --nsg-name nsg-frontend --resource-group $RESOURCE_GROUP \
