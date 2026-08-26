@@ -44,6 +44,21 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseCors("MinGramPolicy");
 
+// ======================================================
+// Rollmappning — ersätter Entra ID App roles
+// Skolkontot tillåter inte App roles/Enterprise application-tilldelning,
+// så rollen mappas här istället, baserat på den autentiserade
+// användarens e-post (levererad äkta av Easy Auth).
+// ======================================================
+
+var rollMappningJson = builder.Configuration["RollMappningJson"];
+
+var rollMappning =
+    string.IsNullOrEmpty(rollMappningJson)
+        ? new Dictionary<string, string>()
+        : JsonSerializer.Deserialize<Dictionary<string, string>>(rollMappningJson)
+          ?? new Dictionary<string, string>();
+
 // -------------------------------------------------------
 // In-memory datastore med seed-data
 // Datan nollställs vid omstart — en riktig app lagrar bilder i Blob Storage
@@ -94,7 +109,7 @@ app.MapPut("/bilder/{id:int}", (int id, BildUpdate update, HttpRequest req) =>
     bilder[index] = bilder[index] with
     {
         Caption = update.Caption ?? bilder[index].Caption,
-        Taggar  = update.Taggar  ?? bilder[index].Taggar
+        Taggar = update.Taggar ?? bilder[index].Taggar
     };
     return Results.Ok(bilder[index]);
 })
@@ -120,20 +135,39 @@ app.Run();
 // ======================================================
 
 // Läser rollen ur Easy Auth-headern som Azure injicerar efter inloggning.
-// Lokalt (utan Easy Auth): returnerar "Admin" så Swagger fungerar utan inloggning.
+// Lokalt (utan Easy Auth): returnerar "Admin" så Swagger fungerar utan
+// inloggning.
+
 string HamtaRoll(HttpRequest request)
 {
     var header = request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
-    if (string.IsNullOrEmpty(header)) return "Admin"; // lokal dev
+    // if (string.IsNullOrEmpty(header)) return "Admin"; //lokal
 
     try
     {
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(header));
         using var doc = JsonDocument.Parse(json);
-        foreach (var claim in doc.RootElement.GetProperty("claims").EnumerateArray())
+
+        string? email = null;
+
+        foreach (var claim in doc.RootElement
+            .GetProperty("claims")
+            .EnumerateArray())
         {
-            if (claim.GetProperty("typ").GetString() == "roles")
-                return claim.GetProperty("val").GetString() ?? "Betraktare";
+            var type = claim.GetProperty("type").GetString();
+
+            if (type == "preferred_username"
+                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
+            {
+                email = claim.GetProperty("val").GetString();
+                break;
+            }
+
+        }
+
+        if (email != null && rollMappning.TryGetValue(email, out var roll))
+        {
+            return roll;
         }
     }
     catch { }
@@ -145,11 +179,13 @@ string HamtaRoll(HttpRequest request)
 // Hierarki: Betraktare < Fotograf < Admin
 bool HarBehorighet(string roll, string kravRoll) => (roll, kravRoll) switch
 {
-    (_, "Betraktare")          => true,
+    (_, "Betraktare") => true,
     ("Fotograf" or "Admin", "Fotograf") => true,
-    ("Admin", "Admin")         => true,
-    _                          => false
+    ("Admin", "Admin") => true,
+    _ => false
 };
+
+
 
 // ======================================================
 // Datamodeller
