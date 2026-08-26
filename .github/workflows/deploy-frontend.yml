@@ -32,5 +32,5 @@ jobs:
       - name: Deploy to Azure
         uses: azure/webapps-deploy@v3
         with:
-          app-name: mingram-ui-maritiman
+          app-name: mingram-ui-maritiman-se
           package: ./publish

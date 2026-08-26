@@ -6,14 +6,18 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>MinGram</title>
+
     <base href="/" />
+
+    <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 <body>
     @* Routes avgör vilken .razor-sida som visas baserat på URL:en *@
-    <Routes />
+    <Routes @rendermode="InteractiveServer" />
 
     @* Blazors JavaScript — krävs för att interaktiviteten ska fungera *@
-    <script src="_framework/blazor.web.js"></script>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 </html>

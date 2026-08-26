@@ -118,3 +118,4 @@ az network private-endpoint create \
   --private-connection-resource-id <storage-account-resource-id> \
   --group-id blob --connection-name pe-storage-connection
 ```
+/
