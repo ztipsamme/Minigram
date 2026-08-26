@@ -30,7 +30,7 @@ builder.Services.AddHttpClient("MinGramApi", client =>
 var app = builder.Build();
 
 app.UseStaticFiles();   // Tillåter filer i wwwroot/ (CSS, bilder)
-app.MapStaticAssets();   // Skydd mot CSRF-attacker vid formulär
+app.UseAntiforgery();   // Skydd mot CSRF-attacker vid formulär
 
 // Koppla Blazor-komponenterna till HTTP-pipelinen
 // App är rotkomponenten som definierar routing och layout
