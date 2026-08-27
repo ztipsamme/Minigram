@@ -18,6 +18,7 @@
 using System.Text;
 using System.Text.Json;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using Microsoft.AspNetCore.Mvc;
 
@@ -144,9 +145,19 @@ app.MapPost("/bilder/uppladdning", async (
     var blobNamn = $"{Guid.NewGuid():N}-{Path.GetFileName(fil.FileName)}";
     var blob = blobContainer.GetBlobClient(blobNamn);
 
+    // Sätt content-type så bilden visas i webbläsaren istället för att laddas ner
+    var contentType = string.IsNullOrWhiteSpace(fil.ContentType)
+        ? "application/octet-stream"
+        : fil.ContentType;
+
+    var uploadOptions = new BlobUploadOptions
+    {
+        HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+    };
+
     await using (var stream = fil.OpenReadStream())
     {
-        await blob.UploadAsync(stream, overwrite: true);
+        await blob.UploadAsync(stream, uploadOptions);
     }
 
     var url = SkapaLasbarUrl(blob);
