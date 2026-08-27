@@ -170,7 +170,16 @@ string HamtaRoll(HttpRequest request)
             return roll;
         }
     }
-    catch { }
+    catch { 
+
+    }
+    var demoEmail = builder.Configuration["DemoUserEmail"];
+
+    if (!string.IsNullOrEmpty(demoEmail) &&
+        rollMappning.TryGetValue(demoEmail, out var demoRoll))
+    {
+        return demoRoll;
+    }
 
     return "Betraktare"; // okänd roll → minsta behörighet
 }

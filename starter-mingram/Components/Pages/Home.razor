@@ -16,6 +16,23 @@
    men Blazor håller en live-anslutning öppen till servern istället för att rendera en gång. *@
 @rendermode InteractiveServer
 
+<div class="authbar">
+    @if (loggedIn)
+    {
+        <span>Inloggad som: <strong>@currentUser</strong></span>
+
+        <a href="/.auth/logout" class="logoutbutton">
+            Logga ut
+        </a>
+    }
+    else
+    {
+        <a href="/.auth/login/aad" class="loginbutton">
+            Logga in
+        </a>
+    }
+</div>
+
 <h2>Bilder</h2>
 
 @if (laddar)
@@ -79,72 +96,94 @@ else
 </div>
 
 @code {
-    private List<Bild> bilder    = new();
-    private bool       laddar    = true;
-    private string     caption   = "";
-    private string     taggar    = "";
+    private List<Bild> bilder = new();
+    private bool laddar = true;
+    private string caption = "";
+    private string taggar = "";
     private IBrowserFile? valdFil;
-    private string     felmeddelande = "";
+    private string felmeddelande = "";
 
-    // OnInitializedAsync = useEffect(() => { fetchData() }, []) i React
-    // Körs en gång när komponenten mountas. Asynkron, så du kan awaita direkt.
+    private bool loggedIn = false;
+    private string currentUser = "";
+
     protected override async Task OnInitializedAsync()
     {
+        await KontrolleraInloggning();
         await HamtaBilder();
+    }
+
+    private async Task KontrolleraInloggning()
+    {
+        var demoUser = Environment.GetEnvironmentVariable("DemoUserEmail");
+
+        if (!string.IsNullOrEmpty(demoUser))
+        {
+            currentUser = demoUser;
+            loggedIn = true;
+            return;
+        }
+
+        loggedIn = false;
+
+        await Task.CompletedTask;
     }
 
     private async Task HamtaBilder()
     {
         laddar = true;
+        felmeddelande = "";
 
-        // TODO: Anropa GET /bilder på ditt API och fyll listan `bilder`
-        // Tips: HttpClientFactory.CreateClient("MinGramApi") ger dig en konfigurerad HttpClient
-        // Tips: GetFromJsonAsync<List<Bild>>("/bilder") deserialiserar JSON åt dig automatiskt
-        await Task.CompletedTask; // ta bort den här raden när du lägger in ditt API-anrop
+        try
+        {
+            var client = HttpClientFactory.CreateClient("MinGramApi");
 
-        // DEMO: en exempelbild så du ser hur galleriet renderas.
-        // När du implementerar GET /bilder ovan ersätts det här av riktiga bilder från API:t.
-        bilder =
-        [
-            new(
-                Namn:            "demo.jpg",
-                Caption:         "Demobild — implementera GET /bilder för att hämta riktiga",
-                Taggar:          ["demo", "placeholder"],
-                TidsbegransadUrl: "https://placehold.co/400x300?text=MinGram+Demo"
-            )
-        ];
+            var apiBilder =
+                await client.GetFromJsonAsync<List<ApiBild>>("/bilder");
 
-        laddar = false;
+            bilder = apiBilder?
+                .Select(b => new Bild(
+                    b.Namn,
+                    b.Caption,
+                    b.Taggar,
+                    b.Url
+                ))
+                .ToList() ?? [];
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Kunde inte hämta bilder från API:t");
+            felmeddelande = "Kunde inte hämta bilder från API:t.";
+        }
+        finally
+        {
+            laddar = false;
+        }
     }
 
     private void FilVald(InputFileChangeEventArgs e)
     {
-        // InputFileChangeEventArgs innehåller den fil användaren valde
-        valdFil       = e.File;
+        valdFil = e.File;
         felmeddelande = "";
     }
 
     private async Task LaddaUpp()
     {
-        if (valdFil == null) return;
-
-        // TODO: Skicka bilden till POST /bilder på ditt API
-        // Tips: MultipartFormDataContent används för att skicka filer via HTTP
-        // Tips: valdFil.OpenReadStream() ger dig filströmmen
-        // Tips: Anropa HamtaBilder() efteråt så uppdateras galleriet
-
-        felmeddelande = "⚠️ Metoden är inte implementerad än — implementera POST /bilder";
+        // TODO
     }
 
     private async Task RaderaBild(string namn)
     {
-        // TODO: Anropa DELETE /bilder/{namn} på ditt API
-        // Tips: Anropa HamtaBilder() efteråt så försvinner bilden från listan
-
-        felmeddelande = "⚠️ Metoden är inte implementerad än — implementera DELETE /bilder/{namn}";
+        // TODO
     }
 
-    // Datamodell som matchar JSON-svaret från MinGram-API:t
+    private record ApiBild(
+        int Id,
+        string Namn,
+        string Caption,
+        List<string> Taggar,
+        string Url
+    );
+
     private record Bild(
         string Namn,
         string Caption,
@@ -152,6 +191,7 @@ else
         string TidsbegransadUrl
     );
 }
+
 
 <style>
     h2 { margin: 1.5rem 0 1rem; font-size: 1.2rem; color: #555; text-transform: uppercase; letter-spacing: 1px; }
@@ -210,4 +250,53 @@ else
 
     button[disabled] { opacity: 0.5; cursor: not-allowed; }
     .fel { color: #e53935; margin-top: 0.5rem; font-size: 0.9rem; }
+    .authbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.authbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.authbar span {
+    color: #555;
+    font-size: 0.9rem;
+}
+
+.loginbutton,
+.logoutbutton {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.loginbutton {
+    background: #3897f0;
+    color: white;
+}
+
+.loginbutton:hover {
+    background: #1877c9;
+}
+
+.logoutbutton {
+    border: 1px solid #ddd;
+    color: #555;
+    background: white;
+}
+
+.logoutbutton:hover {
+    background: #f5f5f5;
+
 </style>
