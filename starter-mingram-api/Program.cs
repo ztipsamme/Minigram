@@ -12,12 +12,13 @@
 //    Skapa rollerna Betraktare, Fotograf, Admin.
 //    Tilldela dem till dina Entra ID-användare under Enterprise applications.
 //
-// Bilder lagras som URL:er — ladda upp till Azure Blob Storage och skicka URL:en hit.
-
-// test
+// Bilder kan skickas som URL (POST /bilder) eller laddas upp till Blob Storage
+// (POST /bilder/uppladdning). Connection string sätts i Azure App Settings.
 
 using System.Text;
 using System.Text.Json;
+using Azure.Storage.Blobs;
+using Azure.Storage.Sas;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,9 +62,20 @@ var rollMappning =
         : JsonSerializer.Deserialize<Dictionary<string, string>>(rollMappningJson)
           ?? new Dictionary<string, string>();
 
+// Blob Storage — connection string ligger i App Settings i Azure
+var storageConn = builder.Configuration["AzureStorageConnectionString"];
+var containerNamn = builder.Configuration["AzureStorageContainer"] ?? "bilder";
+BlobContainerClient? blobContainer = null;
+
+if (!string.IsNullOrWhiteSpace(storageConn))
+{
+    var blobService = new BlobServiceClient(storageConn);
+    blobContainer = blobService.GetBlobContainerClient(containerNamn);
+}
+
 // -------------------------------------------------------
 // In-memory datastore med seed-data
-// Datan nollställs vid omstart — en riktig app lagrar bilder i Blob Storage
+// Datan nollställs vid omstart — filerna ligger kvar i Blob Storage
 // -------------------------------------------------------
 
 var bilder = new List<Bild>
@@ -90,8 +102,7 @@ app.MapGet("/bilder/{id:int}", (int id) =>
 .WithName("HamtaBild")
 .WithSummary("Hämta en specifik bild — alla roller");
 
-// Fotograf och Admin får ladda upp bilder
-// Skicka URL:en till bilden — lagra filen i Azure Blob Storage och använd den URL:en här
+// Fotograf och Admin får lägga till bild via URL (som tidigare)
 app.MapPost("/bilder", (NyBild ny, HttpRequest req) =>
 {
     if (!HarBehorighet(HamtaRoll(req), "Fotograf")) return Results.StatusCode(403);
@@ -100,7 +111,53 @@ app.MapPost("/bilder", (NyBild ny, HttpRequest req) =>
     return Results.Created($"/bilder/{b.Id}", b);
 })
 .WithName("LaddaUppBild")
-.WithSummary("Lägg till bild — kräver Fotograf eller Admin");
+.WithSummary("Lägg till bild via URL — kräver Fotograf eller Admin");
+
+// Fotograf och Admin får ladda upp en riktig fil till Blob Storage
+// Form-data: fil (obligatorisk), caption, taggar (kommaseparerade), namn (valfritt)
+app.MapPost("/bilder/uppladdning", async (HttpRequest req) =>
+{
+    if (!HarBehorighet(HamtaRoll(req), "Fotograf")) return Results.StatusCode(403);
+
+    if (blobContainer is null)
+        return Results.Problem("Blob Storage är inte konfigurerat (AzureStorageConnectionString saknas).");
+
+    var form = await req.ReadFormAsync();
+    var fil = form.Files.GetFile("fil");
+    if (fil is null || fil.Length == 0)
+        return Results.BadRequest("Skicka en fil i fältet 'fil'.");
+
+    var caption = form["caption"].ToString();
+    if (string.IsNullOrWhiteSpace(caption)) caption = fil.FileName;
+
+    var namn = form["namn"].ToString();
+    if (string.IsNullOrWhiteSpace(namn)) namn = fil.FileName;
+
+    var taggarRaw = form["taggar"].ToString();
+    var taggar = string.IsNullOrWhiteSpace(taggarRaw)
+        ? new List<string>()
+        : taggarRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                   .ToList();
+
+    await blobContainer.CreateIfNotExistsAsync();
+
+    // Unikt filnamn så vi inte skriver över gamla bilder
+    var blobNamn = $"{Guid.NewGuid():N}-{Path.GetFileName(fil.FileName)}";
+    var blob = blobContainer.GetBlobClient(blobNamn);
+
+    await using (var stream = fil.OpenReadStream())
+    {
+        await blob.UploadAsync(stream, overwrite: true);
+    }
+
+    var url = SkapaLasbarUrl(blob);
+    var b = new Bild(nastaBildId++, namn, caption, taggar, url);
+    bilder.Add(b);
+    return Results.Created($"/bilder/{b.Id}", b);
+})
+.DisableAntiforgery()
+.WithName("LaddaUppBildFil")
+.WithSummary("Ladda upp bildfil till Blob Storage — kräver Fotograf eller Admin");
 
 // Fotograf och Admin får uppdatera caption och taggar
 app.MapPut("/bilder/{id:int}", (int id, BildUpdate update, HttpRequest req) =>
@@ -133,6 +190,26 @@ app.MapDelete("/bilder/{id:int}", (int id, HttpRequest req) =>
 app.Run();
 
 // ======================================================
+// Blob-hjälp
+// ======================================================
+
+// Storage är privat, så vi ger en SAS-länk som går att öppna i webbläsaren
+string SkapaLasbarUrl(BlobClient blob)
+{
+    if (blob.CanGenerateSasUri)
+    {
+        var sas = new BlobSasBuilder(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddYears(1))
+        {
+            BlobContainerName = blob.BlobContainerName,
+            BlobName = blob.Name
+        };
+        return blob.GenerateSasUri(sas).ToString();
+    }
+
+    return blob.Uri.ToString();
+}
+
+// ======================================================
 // Rollkontroll
 // ======================================================
 
@@ -147,6 +224,8 @@ string HamtaRoll(HttpRequest request)
 
     try
     {
+        if (string.IsNullOrEmpty(header)) return "Betraktare";
+
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(header));
         using var doc = JsonDocument.Parse(json);
 
@@ -186,8 +265,6 @@ bool HarBehorighet(string roll, string kravRoll) => (roll, kravRoll) switch
     ("Admin", "Admin") => true,
     _ => false
 };
-
-
 
 // ======================================================
 // Datamodeller
