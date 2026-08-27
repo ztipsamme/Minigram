@@ -14,6 +14,8 @@
 //
 // Bilder lagras som URL:er — ladda upp till Azure Blob Storage och skicka URL:en hit.
 
+// test
+
 using System.Text;
 using System.Text.Json;
 
