@@ -12,10 +12,15 @@
 //    Skapa rollerna Betraktare, Fotograf, Admin.
 //    Tilldela dem till dina Entra ID-användare under Enterprise applications.
 //
-// Bilder lagras som URL:er — ladda upp till Azure Blob Storage och skicka URL:en hit.
+// Bilder kan skickas som URL (POST /bilder) eller laddas upp till Blob Storage
+// (POST /bilder/uppladdning). Connection string sätts i Azure App Settings.
 
 using System.Text;
 using System.Text.Json;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,9 +64,20 @@ var rollMappning =
         : JsonSerializer.Deserialize<Dictionary<string, string>>(rollMappningJson)
           ?? new Dictionary<string, string>();
 
+// Blob Storage — connection string ligger i App Settings i Azure
+var storageConn = builder.Configuration["AzureStorageConnectionString"];
+var containerNamn = builder.Configuration["AzureStorageContainer"] ?? "bilder";
+BlobContainerClient? blobContainer = null;
+
+if (!string.IsNullOrWhiteSpace(storageConn))
+{
+    var blobService = new BlobServiceClient(storageConn);
+    blobContainer = blobService.GetBlobContainerClient(containerNamn);
+}
+
 // -------------------------------------------------------
 // In-memory datastore med seed-data
-// Datan nollställs vid omstart — en riktig app lagrar bilder i Blob Storage
+// Datan nollställs vid omstart — filerna ligger kvar i Blob Storage
 // -------------------------------------------------------
 
 var bilder = new List<Bild>
@@ -88,8 +104,7 @@ app.MapGet("/bilder/{id:int}", (int id) =>
 .WithName("HamtaBild")
 .WithSummary("Hämta en specifik bild — alla roller");
 
-// Fotograf och Admin får ladda upp bilder
-// Skicka URL:en till bilden — lagra filen i Azure Blob Storage och använd den URL:en här
+// Fotograf och Admin får lägga till bild via URL (som tidigare)
 app.MapPost("/bilder", (NyBild ny, HttpRequest req) =>
 {
     if (!HarBehorighet(HamtaRoll(req), "Fotograf")) return Results.StatusCode(403);
@@ -98,7 +113,76 @@ app.MapPost("/bilder", (NyBild ny, HttpRequest req) =>
     return Results.Created($"/bilder/{b.Id}", b);
 })
 .WithName("LaddaUppBild")
-.WithSummary("Lägg till bild — kräver Fotograf eller Admin");
+.WithSummary("Lägg till bild via URL — kräver Fotograf eller Admin");
+
+// Fotograf och Admin får ladda upp en riktig fil till Blob Storage
+app.MapPost("/bilder/uppladdning", async (
+    HttpRequest req,
+    IFormFile fil,
+    [FromForm] string? caption,
+    [FromForm] string? namn,
+    [FromForm] string? taggar) =>
+{
+    if (!HarBehorighet(HamtaRoll(req), "Fotograf")) return Results.StatusCode(403);
+
+    if (blobContainer is null)
+        return Results.Problem("Blob Storage är inte konfigurerat (AzureStorageConnectionString saknas).");
+
+    if (fil is null || fil.Length == 0)
+        return Results.BadRequest("Skicka en fil i fältet 'fil'.");
+
+    caption = string.IsNullOrWhiteSpace(caption) ? fil.FileName : caption;
+    namn = string.IsNullOrWhiteSpace(namn) ? fil.FileName : namn;
+
+    var taggLista = string.IsNullOrWhiteSpace(taggar)
+        ? new List<string>()
+        : taggar.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+    await blobContainer.CreateIfNotExistsAsync();
+
+    // Unikt filnamn så vi inte skriver över gamla bilder
+    var blobNamn = $"{Guid.NewGuid():N}-{Path.GetFileName(fil.FileName)}";
+    var blob = blobContainer.GetBlobClient(blobNamn);
+
+    // Sätt content-type så bilden visas i webbläsaren istället för att laddas ner
+    var contentType = string.IsNullOrWhiteSpace(fil.ContentType)
+        ? "application/octet-stream"
+        : fil.ContentType;
+
+    var uploadOptions = new BlobUploadOptions
+    {
+        HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+    };
+
+    await using (var stream = fil.OpenReadStream())
+    {
+        await blob.UploadAsync(stream, uploadOptions);
+    }
+
+    var url = SkapaLasbarUrl(blob);
+    var b = new Bild(nastaBildId++, namn, caption, taggLista, url);
+    bilder.Add(b);
+    return Results.Created($"/bilder/{b.Id}", b);
+})
+.DisableAntiforgery()
+.WithName("LaddaUppBildFil")
+.WithSummary("Ladda upp bildfil till Blob Storage — kräver Fotograf eller Admin")
+.Accepts<IFormFile>("multipart/form-data");
+
+// Visar vilken mail/roll Easy Auth ger dig (bra när man felsöker)
+app.MapGet("/jag", (HttpRequest req) =>
+{
+    var header = req.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
+    return Results.Ok(new
+    {
+        roll = HamtaRoll(req),
+        harPrincipal = !string.IsNullOrEmpty(header),
+        email = HamtaEmail(req)
+    });
+})
+.WithName("VemArJag")
+.WithSummary("Visa inloggad mail och mappad roll");
 
 // Fotograf och Admin får uppdatera caption och taggar
 app.MapPut("/bilder/{id:int}", (int id, BildUpdate update, HttpRequest req) =>
@@ -131,6 +215,26 @@ app.MapDelete("/bilder/{id:int}", (int id, HttpRequest req) =>
 app.Run();
 
 // ======================================================
+// Blob-hjälp
+// ======================================================
+
+// Storage är privat, så vi ger en SAS-länk som går att öppna i webbläsaren
+string SkapaLasbarUrl(BlobClient blob)
+{
+    if (blob.CanGenerateSasUri)
+    {
+        var sas = new BlobSasBuilder(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddYears(1))
+        {
+            BlobContainerName = blob.BlobContainerName,
+            BlobName = blob.Name
+        };
+        return blob.GenerateSasUri(sas).ToString();
+    }
+
+    return blob.Uri.ToString();
+}
+
+// ======================================================
 // Rollkontroll
 // ======================================================
 
@@ -138,36 +242,56 @@ app.Run();
 // Lokalt (utan Easy Auth): returnerar "Admin" så Swagger fungerar utan
 // inloggning.
 
-string HamtaRoll(HttpRequest request)
+string? HamtaEmail(HttpRequest request)
 {
     var header = request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
-    // if (string.IsNullOrEmpty(header)) return "Admin"; //lokal
+    if (string.IsNullOrEmpty(header)) return null;
 
     try
     {
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(header));
         using var doc = JsonDocument.Parse(json);
 
-        string? email = null;
-
-        foreach (var claim in doc.RootElement
-            .GetProperty("claims")
-            .EnumerateArray())
+        // Easy Auth använder oftast "typ", inte "type"
+        foreach (var claim in doc.RootElement.GetProperty("claims").EnumerateArray())
         {
-            var type = claim.GetProperty("type").GetString();
+            var typ = claim.TryGetProperty("typ", out var t1) ? t1.GetString()
+                    : claim.TryGetProperty("type", out var t2) ? t2.GetString()
+                    : null;
 
-            if (type == "preferred_username"
-                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
+            if (typ is "preferred_username"
+                or "upn"
+                or "emails"
+                or "email"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")
             {
-                email = claim.GetProperty("val").GetString();
-                break;
+                var val = claim.GetProperty("val").GetString();
+                if (!string.IsNullOrWhiteSpace(val) && val.Contains('@'))
+                    return val;
             }
-
         }
+    }
+    catch { }
 
-        if (email != null && rollMappning.TryGetValue(email, out var roll))
+    return null;
+}
+
+string HamtaRoll(HttpRequest request)
+{
+    // if (string.IsNullOrEmpty(request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault())) return "Admin"; //lokal
+
+    try
+    {
+        var email = HamtaEmail(request);
+        if (email is null) return "Betraktare";
+
+        // Matcha mail utan att bry sig om versaler
+        foreach (var kv in rollMappning)
         {
-            return roll;
+            if (string.Equals(kv.Key, email, StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
         }
     }
     catch { 
@@ -193,8 +317,6 @@ bool HarBehorighet(string roll, string kravRoll) => (roll, kravRoll) switch
     ("Admin", "Admin") => true,
     _ => false
 };
-
-
 
 // ======================================================
 // Datamodeller
