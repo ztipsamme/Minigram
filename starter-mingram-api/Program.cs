@@ -19,6 +19,7 @@ using System.Text;
 using System.Text.Json;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -114,30 +115,28 @@ app.MapPost("/bilder", (NyBild ny, HttpRequest req) =>
 .WithSummary("Lägg till bild via URL — kräver Fotograf eller Admin");
 
 // Fotograf och Admin får ladda upp en riktig fil till Blob Storage
-// Form-data: fil (obligatorisk), caption, taggar (kommaseparerade), namn (valfritt)
-app.MapPost("/bilder/uppladdning", async (HttpRequest req) =>
+app.MapPost("/bilder/uppladdning", async (
+    HttpRequest req,
+    IFormFile fil,
+    [FromForm] string? caption,
+    [FromForm] string? namn,
+    [FromForm] string? taggar) =>
 {
     if (!HarBehorighet(HamtaRoll(req), "Fotograf")) return Results.StatusCode(403);
 
     if (blobContainer is null)
         return Results.Problem("Blob Storage är inte konfigurerat (AzureStorageConnectionString saknas).");
 
-    var form = await req.ReadFormAsync();
-    var fil = form.Files.GetFile("fil");
     if (fil is null || fil.Length == 0)
         return Results.BadRequest("Skicka en fil i fältet 'fil'.");
 
-    var caption = form["caption"].ToString();
-    if (string.IsNullOrWhiteSpace(caption)) caption = fil.FileName;
+    caption = string.IsNullOrWhiteSpace(caption) ? fil.FileName : caption;
+    namn = string.IsNullOrWhiteSpace(namn) ? fil.FileName : namn;
 
-    var namn = form["namn"].ToString();
-    if (string.IsNullOrWhiteSpace(namn)) namn = fil.FileName;
-
-    var taggarRaw = form["taggar"].ToString();
-    var taggar = string.IsNullOrWhiteSpace(taggarRaw)
+    var taggLista = string.IsNullOrWhiteSpace(taggar)
         ? new List<string>()
-        : taggarRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                   .ToList();
+        : taggar.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
 
     await blobContainer.CreateIfNotExistsAsync();
 
@@ -151,13 +150,28 @@ app.MapPost("/bilder/uppladdning", async (HttpRequest req) =>
     }
 
     var url = SkapaLasbarUrl(blob);
-    var b = new Bild(nastaBildId++, namn, caption, taggar, url);
+    var b = new Bild(nastaBildId++, namn, caption, taggLista, url);
     bilder.Add(b);
     return Results.Created($"/bilder/{b.Id}", b);
 })
 .DisableAntiforgery()
 .WithName("LaddaUppBildFil")
-.WithSummary("Ladda upp bildfil till Blob Storage — kräver Fotograf eller Admin");
+.WithSummary("Ladda upp bildfil till Blob Storage — kräver Fotograf eller Admin")
+.Accepts<IFormFile>("multipart/form-data");
+
+// Visar vilken mail/roll Easy Auth ger dig (bra när man felsöker)
+app.MapGet("/jag", (HttpRequest req) =>
+{
+    var header = req.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
+    return Results.Ok(new
+    {
+        roll = HamtaRoll(req),
+        harPrincipal = !string.IsNullOrEmpty(header),
+        email = HamtaEmail(req)
+    });
+})
+.WithName("VemArJag")
+.WithSummary("Visa inloggad mail och mappad roll");
 
 // Fotograf och Admin får uppdatera caption och taggar
 app.MapPut("/bilder/{id:int}", (int id, BildUpdate update, HttpRequest req) =>
@@ -217,38 +231,56 @@ string SkapaLasbarUrl(BlobClient blob)
 // Lokalt (utan Easy Auth): returnerar "Admin" så Swagger fungerar utan
 // inloggning.
 
-string HamtaRoll(HttpRequest request)
+string? HamtaEmail(HttpRequest request)
 {
     var header = request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
-    // if (string.IsNullOrEmpty(header)) return "Admin"; //lokal
+    if (string.IsNullOrEmpty(header)) return null;
 
     try
     {
-        if (string.IsNullOrEmpty(header)) return "Betraktare";
-
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(header));
         using var doc = JsonDocument.Parse(json);
 
-        string? email = null;
-
-        foreach (var claim in doc.RootElement
-            .GetProperty("claims")
-            .EnumerateArray())
+        // Easy Auth använder oftast "typ", inte "type"
+        foreach (var claim in doc.RootElement.GetProperty("claims").EnumerateArray())
         {
-            var type = claim.GetProperty("type").GetString();
+            var typ = claim.TryGetProperty("typ", out var t1) ? t1.GetString()
+                    : claim.TryGetProperty("type", out var t2) ? t2.GetString()
+                    : null;
 
-            if (type == "preferred_username"
-                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
+            if (typ is "preferred_username"
+                or "upn"
+                or "emails"
+                or "email"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+                or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")
             {
-                email = claim.GetProperty("val").GetString();
-                break;
+                var val = claim.GetProperty("val").GetString();
+                if (!string.IsNullOrWhiteSpace(val) && val.Contains('@'))
+                    return val;
             }
-
         }
+    }
+    catch { }
 
-        if (email != null && rollMappning.TryGetValue(email, out var roll))
+    return null;
+}
+
+string HamtaRoll(HttpRequest request)
+{
+    // if (string.IsNullOrEmpty(request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault())) return "Admin"; //lokal
+
+    try
+    {
+        var email = HamtaEmail(request);
+        if (email is null) return "Betraktare";
+
+        // Matcha mail utan att bry sig om versaler
+        foreach (var kv in rollMappning)
         {
-            return roll;
+            if (string.Equals(kv.Key, email, StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
         }
     }
     catch { }
