@@ -280,32 +280,48 @@ string? HamtaEmail(HttpRequest request)
 
 string HamtaRoll(HttpRequest request)
 {
-    // if (string.IsNullOrEmpty(request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault())) return "Admin"; //lokal
+    var header = request.Headers["X-MS-CLIENT-PRINCIPAL"].FirstOrDefault();
+
+    if (string.IsNullOrEmpty(header))
+        return "Betraktare";
 
     try
     {
-        var email = HamtaEmail(request);
-        if (email is null) return "Betraktare";
+        var json = Encoding.UTF8.GetString(
+            Convert.FromBase64String(header)
+        );
 
-        // Matcha mail utan att bry sig om versaler
-        foreach (var kv in rollMappning)
+        using var doc = JsonDocument.Parse(json);
+
+        string? email = null;
+
+        foreach (var claim in doc.RootElement
+            .GetProperty("claims")
+            .EnumerateArray())
         {
-            if (string.Equals(kv.Key, email, StringComparison.OrdinalIgnoreCase))
-                return kv.Value;
+            var type = claim.GetProperty("type").GetString();
+
+            if (type == "email"
+                || type == "preferred_username"
+                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
+            {
+                email = claim.GetProperty("val").GetString();
+                break;
+            }
+        }
+
+        if (email != null &&
+            rollMappning.TryGetValue(email, out var roll))
+        {
+            return roll;
         }
     }
-    catch { 
-
-    }
-    var demoEmail = builder.Configuration["DemoUserEmail"];
-
-    if (!string.IsNullOrEmpty(demoEmail) &&
-        rollMappning.TryGetValue(demoEmail, out var demoRoll))
+    catch
     {
-        return demoRoll;
+        // Invalid/missing Easy Auth header
     }
 
-    return "Betraktare"; // okänd roll → minsta behörighet
+    return "Betraktare";
 }
 
 // Kontrollerar om en roll har tillräcklig behörighet.
