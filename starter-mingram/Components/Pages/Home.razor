@@ -1,20 +1,38 @@
-@* Home.razor — startsidan för MinGram
-   En Blazor-komponent: HTML, C# och CSS i samma fil.
-
-   Ny på Blazor? Läs igenom introduktionen först:
-   → 35_natverk_sakerhet/notes/blazor_intro.md
-
-   Din uppgift är att implementera de metoder som är markerade med TODO.
-   Strukturen är klar — du fyller i HTTP-anropen mot ditt eget API. *@
+@* Home.razor — startsidan för MinGram *@
 
 @page "/"
+
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using System.Text.Json.Serialization;
+
 @inject IHttpClientFactory HttpClientFactory
 @inject ILogger<Home> Logger
+@inject IJSRuntime JS
 
-@* InteractiveServer = C#-koden körs på servern, UI uppdateras via WebSocket (SignalR).
-   React-jämförelse: det finns ingen direkt motsvarighet — närmast är Next.js Server Components,
-   men Blazor håller en live-anslutning öppen till servern istället för att rendera en gång. *@
 @rendermode InteractiveServer
+
+<div class="authbar">
+
+    @if (loggedIn)
+    {
+        <span>
+            Inloggad som: <strong>@currentUser</strong>
+        </span>
+
+        <a href="/.auth/logout?post_logout_redirect_uri=/" class="logoutbutton">
+            Logga ut
+        </a>
+    }
+    else
+    {
+        <a href="/.auth/login/google?post_login_redirect_uri=/" class="loginbutton">
+            Logga in med Google
+        </a>
+    }
+
+</div>
 
 <h2>Bilder</h2>
 
@@ -29,24 +47,34 @@ else if (bilder.Count == 0)
 else
 {
     <div class="bildgalleri">
-        @* @foreach loopar och renderar ett element per item — som .map() i React/JSX *@
+
         @foreach (var bild in bilder)
         {
             <div class="bildkort">
-                @* <img src="@bild.TidsbegransadUrl" alt="@bild.Caption" /> *@
-                <img src="@bild.Url" alt="@bild.Caption" />
+
+                <img src="@bild.TidsbegransadUrl" alt="@bild.Caption" />
+
                 <div class="bildinfo">
-                    <p class="caption">@bild.Caption</p>
-                    <p class="taggar">
-                        @string.Join(" · ", bild.Taggar.Select(t => $"#{t}"))
+
+                    <p class="caption">
+                        @bild.Caption
                     </p>
-                    @* @onclick = onClick i React. Lambda med () => gör att vi kan skicka med argument. *@
-                    <button class="raderaknapp" @onclick="() => RaderaBild(bild.Id)">
+
+                    <p class="taggar">
+                        @string.Join(
+                            " · ",
+                            bild.Taggar.Select(t => $"#{t}")
+                        )
+                    </p>
+
+                    <button class="raderaknapp" @onclick="() => RaderaBild(bild.Namn)">
                         Ta bort
                     </button>
+
                 </div>
             </div>
         }
+
     </div>
 }
 
@@ -55,65 +83,139 @@ else
 <h2>Ladda upp bild</h2>
 
 <div class="uppladdningsformular">
+
     <div class="falt">
+
         <label>Bild</label>
-        @* InputFile är Blazors komponent för filuppladdning *@
+
         <InputFile OnChange="FilVald" accept="image/*" />
+
     </div>
+
     <div class="falt">
+
         <label>Caption</label>
-        @* @bind = controlled input i React: value={caption} onChange={e => setCaption(e.target.value)}
-           Blazor gör båda riktningarna automatiskt med ett enda @bind. *@
+
         <input type="text" @bind="caption" placeholder="Beskriv bilden..." />
+
     </div>
+
     <div class="falt">
+
         <label>Taggar (kommaseparerade)</label>
+
         <input type="text" @bind="taggar" placeholder="semester, strand, sol" />
+
     </div>
-    <button @onclick="LaddaUpp" disabled="@(valdFil == null)">
+
+    <button @onclick="LaddaUpp" disabled="@(valdFil == null || !loggedIn)">
         Ladda upp
     </button>
+
     @if (!string.IsNullOrEmpty(felmeddelande))
     {
-        <p class="fel">@felmeddelande</p>
+        <p class="fel">
+            @felmeddelande
+        </p>
     }
+
 </div>
 
+
 @code {
+
     private List<Bild> bilder = new();
+
     private bool laddar = true;
+
     private string caption = "";
+
     private string taggar = "";
+
     private IBrowserFile? valdFil;
+
     private string felmeddelande = "";
 
-    // OnInitializedAsync = useEffect(() => { fetchData() }, []) i React
-    // Körs en gång när komponenten mountas. Asynkron, så du kan awaita direkt.
+    private bool loggedIn = false;
+
+    private string currentUser = "";
+
+
     protected override async Task OnInitializedAsync()
     {
+        await KontrolleraInloggning();
+
         await HamtaBilder();
     }
 
+
+    private async Task KontrolleraInloggning()
+    {
+        try
+        {
+            var users = await JS.InvokeAsync<List<AuthUser>>(
+                "fetchAuthUser"
+            );
+
+            var user = users?.FirstOrDefault();
+
+            if (user == null)
+            {
+                loggedIn = false;
+                currentUser = "";
+                return;
+            }
+
+            loggedIn = true;
+            currentUser = user.UserId ?? "Okänd användare";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
+            loggedIn = false;
+            currentUser = "";
+        }
+    }
+
+
     private async Task HamtaBilder()
     {
-        // TODO: Anropa GET /bilder på ditt API och fyll listan `bilder`
-        // Tips: HttpClientFactory.CreateClient("MinGramApi") ger dig en konfigurerad HttpClient
-        // Tips: GetFromJsonAsync<List<Bild>>("/bilder") deserialiserar JSON åt dig automatiskt
-        //await Task.CompletedTask; // ta bort den här raden när du lägger in ditt API-anrop
-
         laddar = true;
+
         felmeddelande = "";
 
         try
         {
-            var client = HttpClientFactory.CreateClient("MinGramApi");
+            var client =
+                HttpClientFactory.CreateClient("MinGramApi");
 
-            bilder = await client.GetFromJsonAsync<List<Bild>>("/bilder") ?? [];
+            var apiBilder =
+                await client.GetFromJsonAsync<List<ApiBild>>(
+                    "/bilder"
+                );
+
+            bilder =
+                apiBilder?
+                    .Select(b =>
+                        new Bild(
+                            b.Namn,
+                            b.Caption,
+                            b.Taggar,
+                            b.Url
+                        )
+                    )
+                    .ToList()
+                ?? [];
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Kunde inte hämta bilder");
-            felmeddelande = "Kunde inte hämta bilder.";
+            Logger.LogError(
+                ex,
+                "Kunde inte hämta bilder från API:t"
+            );
+
+            felmeddelande =
+                "Kunde inte hämta bilder från API:t.";
         }
         finally
         {
@@ -121,61 +223,215 @@ else
         }
     }
 
+
     private void FilVald(InputFileChangeEventArgs e)
     {
-        // InputFileChangeEventArgs innehåller den fil användaren valde
         valdFil = e.File;
+
         felmeddelande = "";
     }
+
 
     private async Task LaddaUpp()
     {
-        if (valdFil == null) return;
+        if (!loggedIn)
+        {
+            felmeddelande =
+                "Du måste vara inloggad för att ladda upp en bild.";
 
-        // TODO: Skicka bilden till POST /bilder på ditt API
-        // Tips: MultipartFormDataContent används för att skicka filer via HTTP
-        // Tips: valdFil.OpenReadStream() ger dig filströmmen
-        // Tips: Anropa HamtaBilder() efteråt så uppdateras galleriet
+            return;
+        }
 
-        felmeddelande = "⚠️ Metoden är inte implementerad än — implementera POST /bilder";
-    }
+        if (valdFil == null)
+        {
+            felmeddelande =
+                "Välj en bild först.";
 
-    private async Task RaderaBild(int id)
-    {
-        // TODO: Anropa DELETE /bilder/{namn} på ditt API
-        // Tips: Anropa HamtaBilder() efteråt så försvinner bilden från listan
-        felmeddelande = "";
+            return;
+        }
 
         try
         {
-            var client = HttpClientFactory.CreateClient("MinGramApi");
+            var client =
+                HttpClientFactory.CreateClient("MinGramApi");
 
-            var response = await client.DeleteAsync($"/bilder/{id}");
+            using var content =
+                new MultipartFormDataContent();
+
+            /*
+             * Max 10 MB.
+             *
+             * Change this if your API allows larger files.
+             */
+
+            var stream =
+                valdFil.OpenReadStream(
+                    maxAllowedSize: 10 * 1024 * 1024
+                );
+
+            var fileContent =
+                new StreamContent(stream);
+
+            fileContent.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    valdFil.ContentType
+                );
+
+            content.Add(
+                fileContent,
+                "fil",
+                valdFil.Name
+            );
+
+            content.Add(
+                new StringContent(caption),
+                "caption"
+            );
+
+            content.Add(
+                new StringContent(taggar),
+                "taggar"
+            );
+
+            var response =
+                await client.PostAsync(
+                    "/bilder",
+                    content
+                );
 
             if (response.IsSuccessStatusCode)
             {
+                valdFil = null;
+
+                caption = "";
+
+                taggar = "";
+
                 await HamtaBilder();
-            }
-            else if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            {
-                felmeddelande = "Du saknar behörighet att ta bort bilder.";
             }
             else
             {
-                felmeddelande = $"Kunde inte radera bilden. Status: {(int)response.StatusCode}";
+                Logger.LogWarning(
+                    "API returnerade HTTP {StatusCode} vid uppladdning.",
+                    response.StatusCode
+                );
+
+                felmeddelande =
+                    "Kunde inte ladda upp bilden.";
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Kunde inte radera bild {Id}.", id);
-            felmeddelande = "Kunde inte kontakta API:t.";
-        }
+            Logger.LogError(
+                ex,
+                "Fel vid uppladdning av bild."
+            );
 
-        @* felmeddelande = "⚠️ Metoden är inte implementerad än — implementera DELETE /bilder/{namn}"; *@
+            felmeddelande =
+                "Ett fel uppstod vid uppladdningen.";
+        }
     }
 
-    // Datamodell som matchar JSON-svaret från MinGram-API:t
-    @* private record Bild(
+
+    private async Task RaderaBild(int id)
+    {
+        if (!loggedIn)
+        {
+            felmeddelande =
+                "Du måste vara inloggad.";
+
+            return;
+        }
+
+        try
+        {
+            var client =
+                HttpClientFactory.CreateClient("MinGramApi");
+
+            var response =
+                await client.DeleteAsync(
+                    $"/bilder/{Uri.EscapeDataString(namn)}"
+                );
+
+            if (response.IsSuccessStatusCode)
+            {
+                bilder =
+                    bilder
+                        .Where(b => b.Namn != namn)
+                        .ToList();
+            }
+            else
+            {
+                Logger.LogWarning(
+                    "API returnerade HTTP {StatusCode} vid radering.",
+                    response.StatusCode
+                );
+
+                felmeddelande =
+                    "Kunde inte radera bilden.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(
+                ex,
+                "Fel vid radering av bild {Namn}.",
+                namn
+            );
+
+            felmeddelande =
+                "Ett fel uppstod när bilden skulle raderas.";
+        }
+    }
+
+
+    /*
+     * Response from Azure App Service Authentication:
+     *
+     * [
+     * {
+     * "provider_name": "google",
+     * "user_id": "...",
+     * "user_claims": [
+     * {
+     * "typ": "email",
+     * "val": "..."
+     * }
+     * ]
+     * }
+     * ]
+     */
+
+    private record AuthUser(
+    [property: JsonPropertyName("provider_name")]
+    string? ProviderName,
+
+    [property: JsonPropertyName("user_id")]
+    string? UserId,
+
+    [property: JsonPropertyName("user_claims")]
+    List<AuthClaim>? UserClaims
+    );
+
+    private record AuthClaim(
+    [property: JsonPropertyName("typ")]
+    string? Type,
+
+    [property: JsonPropertyName("val")]
+    string? Value
+    );
+
+
+    private record ApiBild(
+        int Id,
+        string Namn,
+        string Caption,
+        List<string> Taggar,
+        string Url
+    );
+
+
+    private record Bild(
         string Namn,
         string Caption,
         List<string> Taggar,
@@ -190,24 +446,37 @@ else
 );
 }
 
+
 <style>
     h2 {
+
         margin: 1.5rem 0 1rem;
+
         font-size: 1.2rem;
+
         color: #555;
+
         text-transform: uppercase;
+
         letter-spacing: 1px;
+
     }
 
+
     hr {
+
         border: none;
+
         border-top: 1px solid #eee;
+
         margin: 2rem 0;
+
     }
 
     .bildgalleri {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        grid-template-columns:
+            repeat(auto-fill, minmax(250px, 1fr));
         gap: 1rem;
     }
 
@@ -278,7 +547,10 @@ else
     }
 
     .uppladdningsformular button {
-        background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+        background: linear-gradient(135deg,
+                #833ab4,
+                #fd1d1d,
+                #fcb045);
         color: white;
         border: none;
         padding: 0.6rem 1.5rem;
@@ -288,13 +560,64 @@ else
     }
 
     button[disabled] {
+
         opacity: 0.5;
+
         cursor: not-allowed;
+
     }
 
+
     .fel {
+
         color: #e53935;
+
         margin-top: 0.5rem;
+
         font-size: 0.9rem;
+
+    }
+
+    .authbar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #eee;
+    }
+
+    .authbar span {
+        color: #555;
+        font-size: 0.9rem;
+    }
+
+    .loginbutton,
+    .logoutbutton {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+
+    .loginbutton {
+        background: #3897f0;
+        color: white;
+    }
+
+    .loginbutton:hover {
+        background: #1877c9;
+    }
+
+    .logoutbutton {
+        border: 1px solid #ddd;
+        color: #555;
+        background: white;
+    }
+
+    .logoutbutton:hover {
+        background: #f5f5f5;
     }
 </style>
