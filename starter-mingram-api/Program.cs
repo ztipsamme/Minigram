@@ -315,13 +315,38 @@ string HamtaRoll(HttpRequest request)
             Convert.FromBase64String(header)
         );
 
-        // TEMPORARY: return the actual Easy Auth principal
-        return json;
+        using var doc = JsonDocument.Parse(json);
+
+        string? email = null;
+
+        foreach (var claim in doc.RootElement
+            .GetProperty("claims")
+            .EnumerateArray())
+        {
+            var type = claim.GetProperty("typ").GetString();
+
+            if (type == "email"
+                || type == "preferred_username"
+                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
+            {
+                email = claim.GetProperty("val").GetString()?.Trim();
+                break;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(email) &&
+            rollMappning.TryGetValue(email, out var roll))
+        {
+            return roll;
+        }
     }
-    catch (Exception ex)
+    catch
     {
-        return $"ERROR:{ex.Message}";
+        // Invalid/missing Easy Auth header
     }
+
+    return "Betraktare";
 }
 
 // Kontrollerar om en roll har tillräcklig behörighet.
