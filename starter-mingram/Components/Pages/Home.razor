@@ -25,22 +25,20 @@
             Inloggad som: <strong>@currentUser</strong>
         </span>
 
-        <a href="/.auth/logout?post_logout_redirect_uri=/"
-           class="logoutbutton">
+        <a href="/.auth/logout?post_logout_redirect_uri=/" class="logoutbutton">
             Logga ut
         </a>
     }
     else
     {
-        <a href="/.auth/login/google?post_login_redirect_uri=/"
-           class="loginbutton">
+        <a href="/.auth/login/google?post_login_redirect_uri=/" class="loginbutton">
             Logga in med Google
         </a>
     }
 
 </div>
 
-<h2>Bilder</h2> 
+<h2>Bilder</h2>
 
 @if (laddar)
 {
@@ -58,8 +56,7 @@ else
         {
             <div class="bildkort">
 
-                <img src="@bild.TidsbegransadUrl"
-                     alt="@bild.Caption" />
+                <img src="@bild.TidsbegransadUrl" alt="@bild.Caption" />
 
                 <div class="bildinfo">
 
@@ -74,8 +71,7 @@ else
                         )
                     </p>
 
-                    <button class="raderaknapp"
-                            @onclick="() => RaderaBild(bild.Namn)">
+                    <button class="raderaknapp" @onclick="() => RaderaBild(bild.Namn)">
                         Ta bort
                     </button>
 
@@ -96,8 +92,7 @@ else
 
         <label>Bild</label>
 
-        <InputFile OnChange="FilVald"
-                   accept="image/*" />
+        <InputFile OnChange="FilVald" accept="image/*" />
 
     </div>
 
@@ -105,9 +100,7 @@ else
 
         <label>Caption</label>
 
-        <input type="text"
-               @bind="caption"
-               placeholder="Beskriv bilden..." />
+        <input type="text" @bind="caption" placeholder="Beskriv bilden..." />
 
     </div>
 
@@ -115,14 +108,11 @@ else
 
         <label>Taggar (kommaseparerade)</label>
 
-        <input type="text"
-               @bind="taggar"
-               placeholder="semester, strand, sol" />
+        <input type="text" @bind="taggar" placeholder="semester, strand, sol" />
 
     </div>
 
-    <button @onclick="LaddaUpp"
-            disabled="@(valdFil == null || !loggedIn)">
+    <button @onclick="LaddaUpp" disabled="@(valdFil == null || !loggedIn)">
         Ladda upp
     </button>
 
@@ -157,47 +147,47 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-    if (firstRender)
-    {
-        await KontrolleraInloggning();
-        authChecked = true;
+        if (firstRender)
+        {
+            await KontrolleraInloggning();
+            authChecked = true;
 
-        await HamtaBilder();
+            await HamtaBilder();
 
-        StateHasChanged();
+            StateHasChanged();
+        }
     }
-}
 
    
 
 
     private async Task KontrolleraInloggning()
-{
-    try
     {
-        var users = await JS.InvokeAsync<List<AuthUser>>(
-            "fetchAuthUser"
-        );
-
-        var user = users?.FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(user?.UserId))
+        try
         {
+            var users = await JS.InvokeAsync<List<AuthUser>>(
+                "fetchAuthUser"
+            );
+
+            var user = users?.FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(user?.UserId))
+            {
+                loggedIn = false;
+                currentUser = "";
+                return;
+            }
+
+            loggedIn = true;
+            currentUser = user.UserId;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
             loggedIn = false;
             currentUser = "";
-            return;
         }
-
-        loggedIn = true;
-        currentUser = user.UserId;
     }
-    catch (Exception ex)
-    {
-        Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
-        loggedIn = false;
-        currentUser = "";
-    }
-}
 
 
     private async Task HamtaBilder()
@@ -411,16 +401,16 @@ else
      * Response from Azure App Service Authentication:
      *
      * [
-     *   {
-     *     "provider_name": "google",
-     *     "user_id": "...",
-     *     "user_claims": [
-     *       {
-     *         "typ": "email",
-     *         "val": "..."
-     *       }
-     *     ]
-     *   }
+     * {
+     * "provider_name": "google",
+     * "user_id": "...",
+     * "user_claims": [
+     * {
+     * "typ": "email",
+     * "val": "..."
+     * }
+     * ]
+     * }
      * ]
      */
 
@@ -463,19 +453,29 @@ else
 
 
 <style>
-
     h2 {
+
         margin: 1.5rem 0 1rem;
+
         font-size: 1.2rem;
+
         color: #555;
+
         text-transform: uppercase;
+
         letter-spacing: 1px;
+
     }
 
+
     hr {
+
         border: none;
+
         border-top: 1px solid #eee;
+
         margin: 2rem 0;
+
     }
 
     .bildgalleri {
@@ -552,12 +552,10 @@ else
     }
 
     .uppladdningsformular button {
-        background: linear-gradient(
-            135deg,
-            #833ab4,
-            #fd1d1d,
-            #fcb045
-        );
+        background: linear-gradient(135deg,
+                #833ab4,
+                #fd1d1d,
+                #fcb045);
         color: white;
         border: none;
         padding: 0.6rem 1.5rem;
@@ -567,14 +565,22 @@ else
     }
 
     button[disabled] {
+
         opacity: 0.5;
+
         cursor: not-allowed;
+
     }
 
+
     .fel {
+
         color: #e53935;
+
         margin-top: 0.5rem;
+
         font-size: 0.9rem;
+
     }
 
     .authbar {
@@ -619,5 +625,4 @@ else
     .logoutbutton:hover {
         background: #f5f5f5;
     }
-
 </style>
