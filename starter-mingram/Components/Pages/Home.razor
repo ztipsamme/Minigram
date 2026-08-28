@@ -33,14 +33,15 @@ else
         @foreach (var bild in bilder)
         {
             <div class="bildkort">
-                <img src="@bild.TidsbegransadUrl" alt="@bild.Caption" />
+                @* <img src="@bild.TidsbegransadUrl" alt="@bild.Caption" /> *@
+                <img src="@bild.Url" alt="@bild.Caption" />
                 <div class="bildinfo">
                     <p class="caption">@bild.Caption</p>
                     <p class="taggar">
                         @string.Join(" · ", bild.Taggar.Select(t => $"#{t}"))
                     </p>
                     @* @onclick = onClick i React. Lambda med () => gör att vi kan skicka med argument. *@
-                    <button class="raderaknapp" @onclick="() => RaderaBild(bild.Namn)">
+                    <button class="raderaknapp" @onclick="() => RaderaBild(bild.Id)">
                         Ta bort
                     </button>
                 </div>
@@ -79,12 +80,12 @@ else
 </div>
 
 @code {
-    private List<Bild> bilder    = new();
-    private bool       laddar    = true;
-    private string     caption   = "";
-    private string     taggar    = "";
+    private List<Bild> bilder = new();
+    private bool laddar = true;
+    private string caption = "";
+    private string taggar = "";
     private IBrowserFile? valdFil;
-    private string     felmeddelande = "";
+    private string felmeddelande = "";
 
     // OnInitializedAsync = useEffect(() => { fetchData() }, []) i React
     // Körs en gång när komponenten mountas. Asynkron, så du kan awaita direkt.
@@ -95,32 +96,35 @@ else
 
     private async Task HamtaBilder()
     {
-        laddar = true;
-
         // TODO: Anropa GET /bilder på ditt API och fyll listan `bilder`
         // Tips: HttpClientFactory.CreateClient("MinGramApi") ger dig en konfigurerad HttpClient
         // Tips: GetFromJsonAsync<List<Bild>>("/bilder") deserialiserar JSON åt dig automatiskt
-        await Task.CompletedTask; // ta bort den här raden när du lägger in ditt API-anrop
+        //await Task.CompletedTask; // ta bort den här raden när du lägger in ditt API-anrop
 
-        // DEMO: en exempelbild så du ser hur galleriet renderas.
-        // När du implementerar GET /bilder ovan ersätts det här av riktiga bilder från API:t.
-        bilder =
-        [
-            new(
-                Namn:            "demo.jpg",
-                Caption:         "Demobild — implementera GET /bilder för att hämta riktiga",
-                Taggar:          ["demo", "placeholder"],
-                TidsbegransadUrl: "https://placehold.co/400x300?text=MinGram+Demo"
-            )
-        ];
+        laddar = true;
+        felmeddelande = "";
 
-        laddar = false;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("MinGramApi");
+
+            bilder = await client.GetFromJsonAsync<List<Bild>>("/bilder") ?? [];
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Kunde inte hämta bilder");
+            felmeddelande = "Kunde inte hämta bilder.";
+        }
+        finally
+        {
+            laddar = false;
+        }
     }
 
     private void FilVald(InputFileChangeEventArgs e)
     {
         // InputFileChangeEventArgs innehåller den fil användaren valde
-        valdFil       = e.File;
+        valdFil = e.File;
         felmeddelande = "";
     }
 
@@ -136,26 +140,70 @@ else
         felmeddelande = "⚠️ Metoden är inte implementerad än — implementera POST /bilder";
     }
 
-    private async Task RaderaBild(string namn)
+    private async Task RaderaBild(int id)
     {
         // TODO: Anropa DELETE /bilder/{namn} på ditt API
         // Tips: Anropa HamtaBilder() efteråt så försvinner bilden från listan
+        felmeddelande = "";
 
-        felmeddelande = "⚠️ Metoden är inte implementerad än — implementera DELETE /bilder/{namn}";
+        try
+        {
+            var client = HttpClientFactory.CreateClient("MinGramApi");
+
+            var response = await client.DeleteAsync($"/bilder/{id}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                await HamtaBilder();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                felmeddelande = "Du saknar behörighet att ta bort bilder.";
+            }
+            else
+            {
+                felmeddelande = $"Kunde inte radera bilden. Status: {(int)response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Kunde inte radera bild {Id}.", id);
+            felmeddelande = "Kunde inte kontakta API:t.";
+        }
+
+        @* felmeddelande = "⚠️ Metoden är inte implementerad än — implementera DELETE /bilder/{namn}"; *@
     }
 
     // Datamodell som matchar JSON-svaret från MinGram-API:t
-    private record Bild(
+    @* private record Bild(
         string Namn,
         string Caption,
         List<string> Taggar,
         string TidsbegransadUrl
-    );
+    ); *@
+    private record Bild(
+    int Id,
+    string Namn,
+    string Caption,
+    List<string> Taggar,
+    string Url
+);
 }
 
 <style>
-    h2 { margin: 1.5rem 0 1rem; font-size: 1.2rem; color: #555; text-transform: uppercase; letter-spacing: 1px; }
-    hr { border: none; border-top: 1px solid #eee; margin: 2rem 0; }
+    h2 {
+        margin: 1.5rem 0 1rem;
+        font-size: 1.2rem;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    hr {
+        border: none;
+        border-top: 1px solid #eee;
+        margin: 2rem 0;
+    }
 
     .bildgalleri {
         display: grid;
@@ -167,7 +215,7 @@ else
         background: white;
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
     }
 
     .bildkort img {
@@ -177,9 +225,20 @@ else
         display: block;
     }
 
-    .bildinfo   { padding: 0.75rem; }
-    .caption    { font-weight: 600; margin-bottom: 0.25rem; }
-    .taggar     { font-size: 0.8rem; color: #3897f0; margin-bottom: 0.5rem; }
+    .bildinfo {
+        padding: 0.75rem;
+    }
+
+    .caption {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+
+    .taggar {
+        font-size: 0.8rem;
+        color: #3897f0;
+        margin-bottom: 0.5rem;
+    }
 
     .raderaknapp {
         background: none;
@@ -191,12 +250,32 @@ else
         font-size: 0.8rem;
     }
 
-    .raderaknapp:hover { background: #ffeaea; }
+    .raderaknapp:hover {
+        background: #ffeaea;
+    }
 
-    .uppladdningsformular { max-width: 500px; }
-    .falt         { margin-bottom: 1rem; }
-    .falt label   { display: block; font-weight: 600; margin-bottom: 0.35rem; font-size: 0.9rem; }
-    .falt input   { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #dbdbdb; border-radius: 4px; font-size: 1rem; }
+    .uppladdningsformular {
+        max-width: 500px;
+    }
+
+    .falt {
+        margin-bottom: 1rem;
+    }
+
+    .falt label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+        font-size: 0.9rem;
+    }
+
+    .falt input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #dbdbdb;
+        border-radius: 4px;
+        font-size: 1rem;
+    }
 
     .uppladdningsformular button {
         background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
@@ -208,6 +287,14 @@ else
         font-size: 1rem;
     }
 
-    button[disabled] { opacity: 0.5; cursor: not-allowed; }
-    .fel { color: #e53935; margin-top: 0.5rem; font-size: 0.9rem; }
+    button[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .fel {
+        color: #e53935;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+    }
 </style>

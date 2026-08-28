@@ -14,10 +14,10 @@
 //
 // Bilder lagras som URL:er — ladda upp till Azure Blob Storage och skicka URL:en hit.
 
-// test
-
 using System.Text;
 using System.Text.Json;
+using Azure.Identity;
+using Azure.Storage.Blobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,6 +60,19 @@ var rollMappning =
         ? new Dictionary<string, string>()
         : JsonSerializer.Deserialize<Dictionary<string, string>>(rollMappningJson)
           ?? new Dictionary<string, string>();
+
+var blobServiceUri = builder.Configuration["Storage:BlobServiceUri"];
+
+if (string.IsNullOrWhiteSpace(blobServiceUri))
+{
+    throw new InvalidOperationException(
+        "Storage:BlobServiceUri saknas i konfigurationen.");
+}
+
+builder.Services.AddSingleton(
+    new BlobServiceClient(
+        new Uri(blobServiceUri),
+        new DefaultAzureCredential()));
 
 // -------------------------------------------------------
 // In-memory datastore med seed-data
