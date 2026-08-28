@@ -335,11 +335,10 @@ string HamtaRoll(HttpRequest request)
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(email) &&
-            rollMappning.TryGetValue(email, out var roll))
-        {
-            return roll;
-        }
+                if (email != null)
+                     {
+                    return $"EMAIL={email}";
+                     }
     }
     catch
     {
