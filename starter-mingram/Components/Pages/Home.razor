@@ -5,6 +5,7 @@
 @using System.Net.Http.Json
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
+@using System.Text.Json.Serialization;
 
 @inject IHttpClientFactory HttpClientFactory
 @inject ILogger<Home> Logger
@@ -176,19 +177,7 @@ else
         }
 
         loggedIn = true;
-
-        currentUser =
-            user.UserClaims?
-                .FirstOrDefault(c =>
-                    c.Type == "email" ||
-                    c.Type == "preferred_username" ||
-                    c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
-                ?.Value
-            ?? user.UserClaims?
-                .FirstOrDefault(c => c.Type == "name")
-                ?.Value
-            ?? user.UserId
-            ?? "Okänd användare";
+        currentUser = user.UserId ?? "Okänd användare";
     }
     catch (Exception ex)
     {
@@ -424,15 +413,22 @@ else
      */
 
     private record AuthUser(
-        string? ProviderName,
-        string? UserId,
-        List<AuthClaim>? UserClaims
+    [property: JsonPropertyName("provider_name")]
+    string? ProviderName,
+
+    [property: JsonPropertyName("user_id")]
+    string? UserId,
+
+    [property: JsonPropertyName("user_claims")]
+    List<AuthClaim>? UserClaims
     );
 
-
     private record AuthClaim(
-        string Type,
-        string Value
+    [property: JsonPropertyName("typ")]
+    string? Type,
+
+    [property: JsonPropertyName("val")]
+    string? Value
     );
 
 
