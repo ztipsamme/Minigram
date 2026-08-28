@@ -314,14 +314,15 @@ string HamtaRoll(HttpRequest request)
 
             if (type == "email"
                 || type == "preferred_username"
+                || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
                 || type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")
             {
-                email = claim.GetProperty("val").GetString();
+                email = claim.GetProperty("val").GetString()?.Trim();
                 break;
             }
         }
 
-        if (email != null &&
+        if (!string.IsNullOrWhiteSpace(email) &&
             rollMappning.TryGetValue(email, out var roll))
         {
             return roll;
