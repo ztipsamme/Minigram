@@ -335,14 +335,20 @@ string HamtaRoll(HttpRequest request)
             }
         }
 
-                if (email != null)
-                     {
-                    return $"EMAIL={email}";
-                     }
+        // TEMPORARY DIAGNOSTIC
+        if (email != null)
+        {
+            if (rollMappning.TryGetValue(email, out var roll))
+            {
+                return $"FOUND:{email}:{roll}";
+            }
+
+            return $"NOTFOUND:{email}:COUNT={rollMappning.Count}:KEYS={string.Join(",", rollMappning.Keys)}";
+        }
     }
-    catch
+    catch (Exception ex)
     {
-        // Invalid/missing Easy Auth header
+        return $"ERROR:{ex.Message}";
     }
 
     return "Betraktare";
