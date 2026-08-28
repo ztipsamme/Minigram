@@ -15,6 +15,8 @@
 // Bilder kan skickas som URL (POST /bilder) eller laddas upp till Blob Storage
 // (POST /bilder/uppladdning). Connection string sätts i Azure App Settings.
 
+using Azure.Storage.Blobs;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
@@ -29,15 +31,21 @@ app.UseCors("MinGramPolicy");
 
 var rollMappning = RoleMappingConfiguration.Load(builder.Configuration);
 
-var blobContainer = BlobStorageConfiguration.CreateContainer(builder.Configuration);
+var sasUrl = Environment.GetEnvironmentVariable("BLOB_SAS_URL");
+
+var blobContainerClient = string.IsNullOrWhiteSpace(sasUrl)
+    ? null
+    : new BlobContainerClient(new Uri(sasUrl));
 
 var bildStore = new BildStore();
+
 BildEndpoints.Map(
     app,
     bildStore,
-    blobContainer,
-    rollMappning);
-
+    blobContainerClient,
+    sasUrl,
+    rollMappning
+);
 UserEndpoints.Map(app, rollMappning);
 
 app.Run();

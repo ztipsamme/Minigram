@@ -5,10 +5,42 @@ static class BildEndpoints
     internal static void Map(
         WebApplication app,
         BildStore store,
-        BlobContainerClient? blobContainer,
+        BlobContainerClient? blobContainerClient,
+        string? sasUrl,
         Dictionary<string, string> rollMappning)
     {
-        app.MapGet("/bilder", () => store.Bilder)
+        app.MapGet("/bilder", async () =>
+        {
+            List<Bild> res = [];
+
+            if (blobContainerClient is null)
+            {
+                Console.WriteLine("BLOB_SAS_URL saknas — använder mockdata.");
+                return Results.Ok(store.Bilder);
+            }
+            else
+            {
+                Console.WriteLine("BLOB_SAS_URL finns — använder Azure Blob Storage.");
+            }
+
+            await foreach (var blobItem in blobContainerClient.GetBlobsAsync())
+            {
+                var blob = blobContainerClient.GetBlobClient(blobItem.Name);
+
+                var url = $"{blob.Uri}?{new Uri(sasUrl).Query.TrimStart('?')}";
+
+                res.Add(
+                    new Bild(
+                        Id: 0,
+                        Namn: blobItem.Name,
+                        Caption: "",
+                        Taggar: [],
+                        Url: url)
+                );
+            }
+
+            return Results.Ok(res);
+        })
            .WithName("HamtaBilder")
            .WithSummary("Hämta alla bilder — alla roller");
 
