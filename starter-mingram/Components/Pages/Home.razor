@@ -162,51 +162,9 @@ else
 {
     try
     {
-        // Local development
-        var environment =
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-
-        if (environment == "Development")
-        {
-            var demoUser =
-                Environment.GetEnvironmentVariable("DemoUserEmail");
-
-            if (!string.IsNullOrWhiteSpace(demoUser))
-            {
-                currentUser = demoUser;
-                loggedIn = true;
-            }
-            else
-            {
-                currentUser = "";
-                loggedIn = false;
-            }
-
-            return;
-        }
-
-        // Azure App Service
-        var baseUrl =
-            "https://mingram-ui-maritiman-se.azurewebsites.net";
-
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri(baseUrl)
-        };
-
-        var response =
-            await client.GetAsync("/.auth/me");
-
-        if (!response.IsSuccessStatusCode)
-        {
-            loggedIn = false;
-            currentUser = "";
-            return;
-        }
-
-        var users =
-            await response.Content
-                .ReadFromJsonAsync<List<AuthUser>>();
+        var users = await JS.InvokeAsync<List<AuthUser>>(
+            "fetchAuthUser"
+        );
 
         var user = users?.FirstOrDefault();
 
@@ -223,8 +181,8 @@ else
             user.UserClaims?
                 .FirstOrDefault(c =>
                     c.Type == "email" ||
-                    c.Type ==
-                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
+                    c.Type == "preferred_username" ||
+                    c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
                 ?.Value
             ?? user.UserClaims?
                 .FirstOrDefault(c => c.Type == "name")
@@ -234,11 +192,7 @@ else
     }
     catch (Exception ex)
     {
-        Logger.LogError(
-            ex,
-            "Kunde inte kontrollera inloggningen."
-        );
-
+        Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
         loggedIn = false;
         currentUser = "";
     }
