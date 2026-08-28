@@ -15,7 +15,11 @@
 
 <div class="authbar">
 
-    @if (loggedIn)
+    @if (!authChecked)
+    {
+        <span>Kontrollerar inloggning...</span>
+    }
+    else if (loggedIn)
     {
         <span>
             Inloggad som: <strong>@currentUser</strong>
@@ -36,7 +40,7 @@
 
 </div>
 
-<h2>Bilder</h2>
+<h2>Bilder</h2> 
 
 @if (laddar)
 {
@@ -149,14 +153,22 @@ else
     private bool loggedIn = false;
 
     private string currentUser = "";
+    private bool authChecked = false;
 
-
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+    if (firstRender)
     {
         await KontrolleraInloggning();
+        authChecked = true;
 
         await HamtaBilder();
+
+        StateHasChanged();
     }
+}
+
+   
 
 
     private async Task KontrolleraInloggning()
@@ -169,7 +181,7 @@ else
 
         var user = users?.FirstOrDefault();
 
-        if (user == null)
+        if (string.IsNullOrWhiteSpace(user?.UserId))
         {
             loggedIn = false;
             currentUser = "";
@@ -177,7 +189,7 @@ else
         }
 
         loggedIn = true;
-        currentUser = user.UserId ?? "Okänd användare";
+        currentUser = user.UserId;
     }
     catch (Exception ex)
     {
