@@ -212,6 +212,17 @@ app.MapDelete("/bilder/{id:int}", (int id, HttpRequest req) =>
 .WithName("RaderaBild")
 .WithSummary("Radera bild — kräver Admin");
 
+app.MapGet("/debug-roll", (IConfiguration config) =>
+{
+    var raw = config["RollMappningJson"];
+
+    return Results.Json(new
+    {
+        exists = !string.IsNullOrEmpty(raw),
+        value = raw
+    });
+});
+
 app.Run();
 
 // ======================================================
