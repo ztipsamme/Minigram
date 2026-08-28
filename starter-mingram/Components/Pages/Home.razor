@@ -333,7 +333,7 @@ else
     }
 
 
-    private async Task RaderaBild(int id)
+    private async Task RaderaBild(string namn)
     {
         if (!loggedIn)
         {
@@ -436,14 +436,7 @@ else
         string Caption,
         List<string> Taggar,
         string TidsbegransadUrl
-    ); *@
-    private record Bild(
-    int Id,
-    string Namn,
-    string Caption,
-    List<string> Taggar,
-    string Url
-);
+    );
 }
 
 

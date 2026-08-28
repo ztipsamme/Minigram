@@ -22,7 +22,6 @@ using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using Microsoft.AspNetCore.Mvc;
 using Azure.Identity;
-using Azure.Storage.Blobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
