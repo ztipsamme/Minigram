@@ -216,10 +216,23 @@ app.MapGet("/debug-roll", (IConfiguration config) =>
 {
     var raw = config["RollMappningJson"];
 
+    var mapping =
+        string.IsNullOrWhiteSpace(raw)
+            ? new Dictionary<string, string>()
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(raw)
+              ?? new Dictionary<string, string>();
+
+    var email = "osiss121@gmail.com";
+
     return Results.Json(new
     {
-        exists = !string.IsNullOrEmpty(raw),
-        value = raw
+        raw,
+        count = mapping.Count,
+        keys = mapping.Keys.ToArray(),
+        containsExact = mapping.ContainsKey(email),
+        role = mapping.TryGetValue(email, out var role)
+            ? role
+            : null
     });
 });
 
