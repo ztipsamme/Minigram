@@ -147,20 +147,9 @@ else
     private bool authChecked = false;
 
     private HttpClient CreateApiClient()
-{
-    var client = HttpClientFactory.CreateClient("MinGramApi");
-
-    if (!string.IsNullOrWhiteSpace(accessToken))
     {
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue(
-                "Bearer",
-                accessToken
-            );
+        return HttpClientFactory.CreateClient("MinGramApi");
     }
-
-    return client;
-}
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -199,6 +188,9 @@ else
             loggedIn = true;
             currentUser = user.UserId;
             accessToken = user.AccessToken;
+
+            Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
+            Console.WriteLine($"Access token exists: {!string.IsNullOrEmpty(user.AccessToken)}");
         }
         catch (Exception ex)
         {
