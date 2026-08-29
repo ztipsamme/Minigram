@@ -171,60 +171,151 @@ else
 {
     try
     {
+        Console.WriteLine("=== KONTROLLERAR INLOGGNING ===");
+
         var users = await JS.InvokeAsync<List<AuthUser>>(
             "fetchAuthUser"
         );
+
+        Console.WriteLine($"Antal Easy Auth users: {users?.Count ?? 0}");
 
         var user = users?.FirstOrDefault();
 
         if (string.IsNullOrWhiteSpace(user?.UserId))
         {
+            Console.WriteLine("INGEN INLOGGAD ANVÄNDARE");
+
             loggedIn = false;
             currentUser = "";
             accessToken = null;
+
             return;
         }
 
         loggedIn = true;
         currentUser = user.UserId;
         accessToken = user.AccessToken;
-        if (!string.IsNullOrWhiteSpace(accessToken))
-{
-    var parts = accessToken.Split('.');
-
-    if (parts.Length == 3)
-    {
-        var payload = parts[1]
-            .Replace('-', '+')
-            .Replace('_', '/');
-
-        while (payload.Length % 4 != 0)
-            payload += "=";
-
-        var bytes = Convert.FromBase64String(payload);
-        var json = System.Text.Encoding.UTF8.GetString(bytes);
-
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-
-        if (doc.RootElement.TryGetProperty("iss", out var iss))
-            Console.WriteLine($"TOKEN ISSUER: {iss}");
-
-        if (doc.RootElement.TryGetProperty("aud", out var aud))
-            Console.WriteLine($"TOKEN AUDIENCE: {aud}");
-
-        if (doc.RootElement.TryGetProperty("exp", out var exp))
-            Console.WriteLine($"TOKEN EXPIRATION: {exp}");
-    }
-}
 
         Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
+        Console.WriteLine($"User ID: {user.UserId}");
         Console.WriteLine(
             $"Access token exists: {!string.IsNullOrEmpty(user.AccessToken)}"
         );
+
+        // =========================================================
+        // TOKEN DEBUG
+        // =========================================================
+
+        Console.WriteLine("=== TOKEN DEBUG START ===");
+
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            Console.WriteLine("TOKEN IS NULL OR EMPTY");
+        }
+        else
+        {
+            Console.WriteLine($"TOKEN LENGTH: {accessToken.Length}");
+
+            var parts = accessToken.Split('.');
+
+            Console.WriteLine($"TOKEN PARTS: {parts.Length}");
+
+            if (parts.Length == 3)
+            {
+                Console.WriteLine("TOKEN LOOKS LIKE JWT");
+
+                try
+                {
+                    var payload = parts[1]
+                        .Replace('-', '+')
+                        .Replace('_', '/');
+
+                    while (payload.Length % 4 != 0)
+                    {
+                        payload += "=";
+                    }
+
+                    var bytes = Convert.FromBase64String(payload);
+
+                    var json = System.Text.Encoding.UTF8.GetString(bytes);
+
+                    Console.WriteLine($"TOKEN PAYLOAD: {json}");
+
+                    using var doc =
+                        System.Text.Json.JsonDocument.Parse(json);
+
+                    if (doc.RootElement.TryGetProperty(
+                        "iss",
+                        out var issuer))
+                    {
+                        Console.WriteLine(
+                            $"TOKEN ISSUER: {issuer}"
+                        );
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            "TOKEN ISSUER: <not present>"
+                        );
+                    }
+
+                    if (doc.RootElement.TryGetProperty(
+                        "aud",
+                        out var audience))
+                    {
+                        Console.WriteLine(
+                            $"TOKEN AUDIENCE: {audience}"
+                        );
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            "TOKEN AUDIENCE: <not present>"
+                        );
+                    }
+
+                    if (doc.RootElement.TryGetProperty(
+                        "exp",
+                        out var expiration))
+                    {
+                        Console.WriteLine(
+                            $"TOKEN EXPIRATION: {expiration}"
+                        );
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            "TOKEN EXPIRATION: <not present>"
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"TOKEN DECODE ERROR: {ex.Message}"
+                    );
+                }
+            }
+            else
+            {
+                Console.WriteLine(
+                    "TOKEN IS NOT A 3-PART JWT"
+                );
+            }
+        }
+
+        Console.WriteLine("=== TOKEN DEBUG END ===");
     }
     catch (Exception ex)
     {
-        Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
+        Logger.LogError(
+            ex,
+            "Kunde inte kontrollera inloggningen."
+        );
+
+        Console.WriteLine(
+            $"AUTH ERROR: {ex.Message}"
+        );
 
         loggedIn = false;
         currentUser = "";
