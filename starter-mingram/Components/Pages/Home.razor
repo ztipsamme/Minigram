@@ -168,72 +168,41 @@ else
 
 
     private async Task KontrolleraInloggning()
-    {
-        try
-        {
-            var users = await JS.InvokeAsync<List<AuthUser>>(
-                "fetchAuthUser"
-            );
-
-            var user = users?.FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(user?.UserId))
-            {
-                loggedIn = false;
-                currentUser = "";
-                accessToken = null;
-                return;
-            }
-
-            loggedIn = true;
-            currentUser = user.UserId;
-            accessToken = user.AccessToken;
-
-            if (!string.IsNullOrWhiteSpace(accessToken))
 {
     try
     {
-        var parts = accessToken.Split('.');
+        var users = await JS.InvokeAsync<List<AuthUser>>(
+            "fetchAuthUser"
+        );
 
-        if (parts.Length == 3)
+        var user = users?.FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(user?.UserId))
         {
-            var payload = parts[1]
-                .Replace('-', '+')
-                .Replace('_', '/');
-
-            switch (payload.Length % 4)
-            {
-                case 2:
-                    payload += "==";
-                    break;
-                case 3:
-                    payload += "=";
-                    break;
-            }
-
-            var json = System.Text.Encoding.UTF8.GetString(
-                Convert.FromBase64String(payload)
-            );
-
-            Console.WriteLine($"TOKEN PAYLOAD: {json}");
+            loggedIn = false;
+            currentUser = "";
+            accessToken = null;
+            return;
         }
+
+        loggedIn = true;
+        currentUser = user.UserId;
+        accessToken = user.AccessToken;
+
+        Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
+        Console.WriteLine(
+            $"Access token exists: {!string.IsNullOrEmpty(user.AccessToken)}"
+        );
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Kunde inte läsa token: {ex.Message}");
+        Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
+
+        loggedIn = false;
+        currentUser = "";
+        accessToken = null;
     }
 }
-
-            Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
-            Console.WriteLine($"Access token exists: {!string.IsNullOrEmpty(user.AccessToken)}");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Kunde inte kontrollera inloggningen.");
-            loggedIn = false;
-            currentUser = "";
-        }
-    }
 
 
     private async Task HamtaBilder()
