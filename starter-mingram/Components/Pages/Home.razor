@@ -208,7 +208,8 @@ else
         var client = CreateApiClient();
 
         Console.WriteLine("=== HÄMTAR BILDER ===");
-        
+        Console.WriteLine($"API: {client.BaseAddress}");
+        Console.WriteLine($"Token finns: {!string.IsNullOrWhiteSpace(accessToken)}");
 
         var response = await client.GetAsync("/bilder");
 
@@ -242,10 +243,6 @@ else
     {
         Console.WriteLine($"=== API ERROR ===");
         Console.WriteLine(ex.ToString());
-    }
-    finally
-    {
-        laddar = false;
     }
 }
 
