@@ -189,6 +189,41 @@ else
             currentUser = user.UserId;
             accessToken = user.AccessToken;
 
+            if (!string.IsNullOrWhiteSpace(accessToken))
+{
+    try
+    {
+        var parts = accessToken.Split('.');
+
+        if (parts.Length == 3)
+        {
+            var payload = parts[1]
+                .Replace('-', '+')
+                .Replace('_', '/');
+
+            switch (payload.Length % 4)
+            {
+                case 2:
+                    payload += "==";
+                    break;
+                case 3:
+                    payload += "=";
+                    break;
+            }
+
+            var json = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(payload)
+            );
+
+            Console.WriteLine($"TOKEN PAYLOAD: {json}");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Kunde inte läsa token: {ex.Message}");
+    }
+}
+
             Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
             Console.WriteLine($"Access token exists: {!string.IsNullOrEmpty(user.AccessToken)}");
         }
