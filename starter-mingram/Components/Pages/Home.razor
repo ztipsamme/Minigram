@@ -148,18 +148,8 @@ else
 
     private HttpClient CreateApiClient()
 {
-    var client = HttpClientFactory.CreateClient("MinGramApi");
-
-    if (!string.IsNullOrWhiteSpace(accessToken))
-    {
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue(
-                "Bearer",
-                accessToken);
-    }
-
-    return client;
-    }
+    return HttpClientFactory.CreateClient("MinGramApi");
+}
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
