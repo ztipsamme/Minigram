@@ -138,12 +138,29 @@ else
 
     private IBrowserFile? valdFil;
 
+    private string? accessToken;
     private string felmeddelande = "";
 
     private bool loggedIn = false;
 
     private string currentUser = "";
     private bool authChecked = false;
+
+    private HttpClient CreateApiClient()
+{
+    var client = HttpClientFactory.CreateClient("MinGramApi");
+
+    if (!string.IsNullOrWhiteSpace(accessToken))
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer",
+                accessToken
+            );
+    }
+
+    return client;
+}
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -175,11 +192,13 @@ else
             {
                 loggedIn = false;
                 currentUser = "";
+                accessToken = null;
                 return;
             }
 
             loggedIn = true;
             currentUser = user.UserId;
+            accessToken = user.AccessToken;
         }
         catch (Exception ex)
         {
@@ -198,8 +217,7 @@ else
 
         try
         {
-            var client =
-                HttpClientFactory.CreateClient("MinGramApi");
+            var client = CreateApiClient();
 
             var apiBilder =
                 await client.GetFromJsonAsync<List<ApiBild>>(
@@ -264,8 +282,7 @@ else
 
         try
         {
-            var client =
-                HttpClientFactory.CreateClient("MinGramApi");
+            var client = CreateApiClient();
 
             using var content =
                 new MultipartFormDataContent();
@@ -357,8 +374,7 @@ else
 
         try
         {
-            var client =
-                HttpClientFactory.CreateClient("MinGramApi");
+            var client = CreateApiClient();
 
             var response =
                 await client.DeleteAsync(
@@ -422,7 +438,10 @@ else
     string? UserId,
 
     [property: JsonPropertyName("user_claims")]
-    List<AuthClaim>? UserClaims
+    List<AuthClaim>? UserClaims,
+
+    [property: JsonPropertyName("access_token")]
+    string? AccessToken
     );
 
     private record AuthClaim(
