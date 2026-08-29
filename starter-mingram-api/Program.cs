@@ -36,7 +36,7 @@ var storageAccountName = builder.Configuration["Storage:AccountName"]
     ?? throw new InvalidOperationException("Storage:AccountName saknas.");
 
 var blobContainerClient = new BlobContainerClient(
-    new Uri($"https://{storageAccountName}.blob.core.windows.net/bilder"),
+    new Uri($"https://{storageAccountName}.blob.core.windows.net/stmingrammaritiman2"),
     new DefaultAzureCredential()
 );
 
