@@ -207,23 +207,25 @@ else
     {
         var client = CreateApiClient();
 
-        Console.WriteLine("=== HÄMTAR BILDER ===");
-        Console.WriteLine($"API: {client.BaseAddress}");
-        Console.WriteLine($"Token finns: {!string.IsNullOrWhiteSpace(accessToken)}");
+Console.WriteLine("=== HÄMTAR BILDER ===");
+Console.WriteLine($"API: {client.BaseAddress}");
+Console.WriteLine($"Token finns: {!string.IsNullOrWhiteSpace(accessToken)}");
 
-        if (string.IsNullOrWhiteSpace(accessToken))
-    {
-        Console.WriteLine("Ingen access token - användaren är inte inloggad.");
-        return;
-    }
+if (string.IsNullOrWhiteSpace(accessToken))
+{
+    Console.WriteLine("INGEN ACCESS TOKEN");
+    return;
+}
 
-    client.DefaultRequestHeaders.Authorization =
-        new System.Net.Http.Headers.AuthenticationHeaderValue(
-            "Bearer",
-            accessToken
-        );
+client.DefaultRequestHeaders.Authorization =
+    new System.Net.Http.Headers.AuthenticationHeaderValue(
+        "Bearer",
+        accessToken
+    );
 
-        var response = await client.GetAsync("/bilder");
+Console.WriteLine("Bearer token tillagd.");
+
+var response = await client.GetAsync("/bilder");
 
         Console.WriteLine($"API STATUS: {(int)response.StatusCode} {response.StatusCode}");
 
