@@ -188,6 +188,34 @@ else
         loggedIn = true;
         currentUser = user.UserId;
         accessToken = user.AccessToken;
+        if (!string.IsNullOrWhiteSpace(accessToken))
+{
+    var parts = accessToken.Split('.');
+
+    if (parts.Length == 3)
+    {
+        var payload = parts[1]
+            .Replace('-', '+')
+            .Replace('_', '/');
+
+        while (payload.Length % 4 != 0)
+            payload += "=";
+
+        var bytes = Convert.FromBase64String(payload);
+        var json = System.Text.Encoding.UTF8.GetString(bytes);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+        if (doc.RootElement.TryGetProperty("iss", out var iss))
+            Console.WriteLine($"TOKEN ISSUER: {iss}");
+
+        if (doc.RootElement.TryGetProperty("aud", out var aud))
+            Console.WriteLine($"TOKEN AUDIENCE: {aud}");
+
+        if (doc.RootElement.TryGetProperty("exp", out var exp))
+            Console.WriteLine($"TOKEN EXPIRATION: {exp}");
+    }
+}
 
         Console.WriteLine($"Easy Auth provider: {user.ProviderName}");
         Console.WriteLine(
