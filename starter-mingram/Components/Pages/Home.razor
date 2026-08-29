@@ -202,48 +202,49 @@ else
 
 
     private async Task HamtaBilder()
+{
+    try
     {
-        laddar = true;
+        var client = CreateApiClient();
 
-        felmeddelande = "";
+        Console.WriteLine("=== HÄMTAR BILDER ===");
+        Console.WriteLine($"API: {client.BaseAddress}");
+        Console.WriteLine($"Token finns: {!string.IsNullOrWhiteSpace(accessToken)}");
 
-        try
+        var response = await client.GetAsync("/bilder");
+
+        Console.WriteLine($"API STATUS: {(int)response.StatusCode} {response.StatusCode}");
+
+        var body = await response.Content.ReadAsStringAsync();
+
+        Console.WriteLine($"API RESPONSE: {body}");
+
+        if (!response.IsSuccessStatusCode)
         {
-            var client = CreateApiClient();
-
-            var apiBilder =
-                await client.GetFromJsonAsync<List<ApiBild>>(
-                    "/bilder"
-                );
-
-            bilder =
-                apiBilder?
-                    .Select(b =>
-                        new Bild(
-                            b.Namn,
-                            b.Caption,
-                            b.Taggar,
-                            b.Url
-                        )
-                    )
-                    .ToList()
-                ?? [];
+            Console.WriteLine("=== API-ANROP MISSLYCKADES ===");
+            return;
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                ex,
-                "Kunde inte hämta bilder från API:t"
-            );
 
-            felmeddelande =
-                "Kunde inte hämta bilder från API:t.";
-        }
-        finally
-        {
-            laddar = false;
-        }
+        var apiBilder =
+            System.Text.Json.JsonSerializer.Deserialize<List<ApiBild>>(body);
+
+        bilder = apiBilder?
+            .Select(b => new Bild(
+                
+                b.Namn,
+                b.Caption,
+                b.Taggar,
+                b.Url))
+            .ToList() ?? new();
+
+        Console.WriteLine($"Antal bilder: {bilder.Count}");
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"=== API ERROR ===");
+        Console.WriteLine(ex.ToString());
+    }
+}
 
 
     private void FilVald(InputFileChangeEventArgs e)
